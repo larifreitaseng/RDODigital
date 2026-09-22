@@ -30,6 +30,7 @@ interface RdoListProps {
   onShareRdo: (rdo: RelatorioDiarioObra) => void;
   onNavigatePeriodos?: () => void;
   initialObraFilter?: string;
+  canEdit?: boolean;
 }
 
 export const RdoList: React.FC<RdoListProps> = ({
@@ -42,7 +43,8 @@ export const RdoList: React.FC<RdoListProps> = ({
   onDownloadPdf,
   onShareRdo,
   onNavigatePeriodos,
-  initialObraFilter = 'todas'
+  initialObraFilter = 'todas',
+  canEdit = true
 }) => {
   const [selectedObraId, setSelectedObraId] = useState<string>(initialObraFilter);
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -96,13 +98,23 @@ export const RdoList: React.FC<RdoListProps> = ({
               <span>Filtrar por Período</span>
             </button>
           )}
-          <button
-            onClick={onNewRdo}
-            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all"
-          >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            Emitir Novo RDO
-          </button>
+          {canEdit ? (
+            <button
+              onClick={onNewRdo}
+              className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              Emitir Novo RDO
+            </button>
+          ) : (
+            <button
+              onClick={onNewRdo}
+              className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 font-semibold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all"
+              title="Faça login com uma conta de editor para criar relatórios"
+            >
+              <span>Entrar para Emitir RDO</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -247,25 +259,29 @@ export const RdoList: React.FC<RdoListProps> = ({
                     <Share2 className="w-4 h-4" />
                   </button>
 
-                  <button
-                    onClick={() => onEditRdo(rdo)}
-                    className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                    title="Editar RDO"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </button>
+                  {canEdit && (
+                    <>
+                      <button
+                        onClick={() => onEditRdo(rdo)}
+                        className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                        title="Editar RDO"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
 
-                  <button
-                    onClick={() => {
-                      if (confirm(`Deseja realmente excluir o RDO Nº ${rdo.numero}?`)) {
-                        onDeleteRdo(rdo.id);
-                      }
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                    title="Excluir RDO"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Deseja realmente excluir o RDO Nº ${rdo.numero}?`)) {
+                            onDeleteRdo(rdo.id);
+                          }
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        title="Excluir RDO"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
                 </div>
 
               </div>

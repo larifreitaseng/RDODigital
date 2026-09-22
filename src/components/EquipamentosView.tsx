@@ -18,12 +18,14 @@ interface EquipamentosViewProps {
   equipamentos: Equipamento[];
   onSaveEquipamento: (equipamento: Equipamento) => void;
   onDeleteEquipamento: (id: string) => void;
+  canEdit?: boolean;
 }
 
 export const EquipamentosView: React.FC<EquipamentosViewProps> = ({
   equipamentos,
   onSaveEquipamento,
-  onDeleteEquipamento
+  onDeleteEquipamento,
+  canEdit = true
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroSituacao, setFiltroSituacao] = useState<string>('todos');
@@ -127,13 +129,15 @@ export const EquipamentosView: React.FC<EquipamentosViewProps> = ({
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">Equipamentos e Maquinário do Canteiro</h2>
           <p className="text-xs text-slate-500">Controle de máquinas leves, pesadas, ferramentas e andaimes presentes na obra</p>
         </div>
-        <button
-          onClick={() => openModal()}
-          className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-          Cadastrar Equipamento
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => openModal()}
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            Cadastrar Equipamento
+          </button>
+        )}
       </div>
 
       {/* Filter and Search */}
@@ -210,26 +214,30 @@ export const EquipamentosView: React.FC<EquipamentosViewProps> = ({
                     <td className="py-3.5 px-4 text-slate-600">{equip.fornecedor || '-'}</td>
                     <td className="py-3.5 px-4">{getStatusBadge(equip.status)}</td>
                     <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openModal(equip)}
-                          title="Editar"
-                          className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Deseja remover "${equip.nome}"?`)) {
-                              onDeleteEquipamento(equip.id);
-                            }
-                          }}
-                          title="Excluir"
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {canEdit ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openModal(equip)}
+                            title="Editar"
+                            className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Deseja remover "${equip.nome}"?`)) {
+                                onDeleteEquipamento(equip.id);
+                              }
+                            }}
+                            title="Excluir"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-mono">-</span>
+                      )}
                     </td>
                   </tr>
                 ))

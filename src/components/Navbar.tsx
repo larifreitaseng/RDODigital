@@ -31,6 +31,7 @@ interface NavbarProps {
   onNavigateLogin?: () => void;
   onNavigateLogout?: () => void;
   isFirebaseConnected?: boolean;
+  canEdit?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -44,7 +45,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onNavigateArmazenamento,
   onNavigateLogin,
   onNavigateLogout,
-  isFirebaseConnected = true
+  isFirebaseConnected = true,
+  canEdit = true
 }) => {
   const currentDate = new Date().toLocaleDateString('pt-BR', {
     weekday: 'long',
@@ -185,26 +187,33 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Header Action Buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                id="btn-novo-rdo-header"
-                onClick={onNewRdo}
-                className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm shadow-sm transition-all transform active:scale-95"
-              >
-                <Plus className="w-4 h-4 stroke-[2.5]" />
-                <span className="hidden sm:inline">Emitir Novo RDO</span>
-                <span className="sm:hidden">Novo RDO</span>
-              </button>
+            {canEdit ? (
+              <div className="flex items-center gap-2">
+                <button
+                  id="btn-novo-rdo-header"
+                  onClick={onNewRdo}
+                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm shadow-sm transition-all transform active:scale-95"
+                >
+                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                  <span className="hidden sm:inline">Emitir Novo RDO</span>
+                  <span className="sm:hidden">Novo RDO</span>
+                </button>
 
-              <button
-                id="btn-reset-demo"
-                onClick={onResetData}
-                title="Restaurar dados de demonstração da engenharia"
-                className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-colors text-xs"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-            </div>
+                <button
+                  id="btn-reset-demo"
+                  onClick={onResetData}
+                  title="Restaurar dados de demonstração da engenharia"
+                  className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-colors text-xs"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800/80 text-amber-400 text-xs font-semibold">
+                <Eye className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Modo Leitura</span>
+              </div>
+            )}
 
           </div>
 

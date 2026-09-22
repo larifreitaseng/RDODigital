@@ -78,6 +78,13 @@ export default function App() {
     // Immediate render from local cache
     loadData();
 
+    // Initialize permanent IndexedDB storage to guarantee reports are never lost
+    StorageService.initAsyncStorage((loadedRdos) => {
+      if (loadedRdos && loadedRdos.length > 0) {
+        setRdos(loadedRdos);
+      }
+    });
+
     // Verify Firestore connection
     testConnection().then((connected) => {
       setIsFirebaseConnected(connected);
@@ -100,8 +107,8 @@ export default function App() {
       },
       onRdos: (firestoreRdos) => {
         if (firestoreRdos && firestoreRdos.length > 0) {
-          setRdos(firestoreRdos);
-          StorageService.setRdosLocal(firestoreRdos);
+          const merged = StorageService.setRdosLocal(firestoreRdos);
+          setRdos(merged);
         }
       },
       onColaboradores: (firestoreColabs) => {
@@ -132,12 +139,17 @@ export default function App() {
     };
   }, []);
 
-  const isViewer = currentUser?.perfil === 'visualizador';
+  const isViewer = !currentUser || currentUser?.perfil === 'visualizador';
 
   // OBRAS HANDLERS
   const handleSaveObra = (obra: Obra) => {
     if (isViewer) {
-      showToast('Acesso Restrito: Usuários com perfil "Visualizador" não têm permissão para cadastrar ou alterar obras.', 'error');
+      if (!currentUser) {
+        showToast('Modo Visitante: Identifique-se com um login autorizado para cadastrar ou alterar obras.', 'error');
+        setActiveTab('usuarios');
+      } else {
+        showToast('Acesso Restrito: Usuários com perfil "Visualizador" não têm permissão para cadastrar ou alterar obras.', 'error');
+      }
       return;
     }
     StorageService.saveObra(obra);
@@ -148,7 +160,12 @@ export default function App() {
 
   const handleDeleteObra = (id: string) => {
     if (isViewer) {
-      showToast('Acesso Restrito: Usuários com perfil "Visualizador" não podem excluir obras.', 'error');
+      if (!currentUser) {
+        showToast('Modo Visitante: Identifique-se com um login autorizado para excluir obras.', 'error');
+        setActiveTab('usuarios');
+      } else {
+        showToast('Acesso Restrito: Usuários com perfil "Visualizador" não podem excluir obras.', 'error');
+      }
       return;
     }
     StorageService.deleteObra(id);
@@ -160,7 +177,12 @@ export default function App() {
   // COLABORADORES HANDLERS
   const handleSaveColaborador = (colaborador: Colaborador) => {
     if (isViewer) {
-      showToast('Acesso Restrito: Perfil "Visualizador" não pode alterar o quadro de colaboradores.', 'error');
+      if (!currentUser) {
+        showToast('Modo Visitante: Faça login com permissão de editor para cadastrar colaboradores.', 'error');
+        setActiveTab('usuarios');
+      } else {
+        showToast('Acesso Restrito: Perfil "Visualizador" não pode alterar o quadro de colaboradores.', 'error');
+      }
       return;
     }
     StorageService.saveColaborador(colaborador);
@@ -171,7 +193,12 @@ export default function App() {
 
   const handleDeleteColaborador = (id: string) => {
     if (isViewer) {
-      showToast('Acesso Restrito: Perfil "Visualizador" não possui permissão de exclusão.', 'error');
+      if (!currentUser) {
+        showToast('Modo Visitante: Faça login com permissão de editor para remover colaboradores.', 'error');
+        setActiveTab('usuarios');
+      } else {
+        showToast('Acesso Restrito: Perfil "Visualizador" não pode excluir colaboradores.', 'error');
+      }
       return;
     }
     StorageService.deleteColaborador(id);
@@ -183,7 +210,12 @@ export default function App() {
   // EQUIPAMENTOS HANDLERS
   const handleSaveEquipamento = (equipamento: Equipamento) => {
     if (isViewer) {
-      showToast('Acesso Restrito: Perfil "Visualizador" não pode alterar a frota de equipamentos.', 'error');
+      if (!currentUser) {
+        showToast('Modo Visitante: Faça login para cadastrar equipamentos.', 'error');
+        setActiveTab('usuarios');
+      } else {
+        showToast('Acesso Restrito: Perfil "Visualizador" não pode alterar a frota de equipamentos.', 'error');
+      }
       return;
     }
     StorageService.saveEquipamento(equipamento);
@@ -194,7 +226,12 @@ export default function App() {
 
   const handleDeleteEquipamento = (id: string) => {
     if (isViewer) {
-      showToast('Acesso Restrito: Perfil "Visualizador" não possui permissão de exclusão.', 'error');
+      if (!currentUser) {
+        showToast('Modo Visitante: Faça login para remover equipamentos.', 'error');
+        setActiveTab('usuarios');
+      } else {
+        showToast('Acesso Restrito: Perfil "Visualizador" não possui permissão de exclusão.', 'error');
+      }
       return;
     }
     StorageService.deleteEquipamento(id);
@@ -206,24 +243,34 @@ export default function App() {
   // RDOS HANDLERS
   const handleSaveRdo = (rdo: RelatorioDiarioObra) => {
     if (isViewer) {
-      showToast('Acesso Restrito: Usuários com perfil "Visualizador" não podem modificar o RDO.', 'error');
+      if (!currentUser) {
+        showToast('Modo Visitante: Faça login com uma conta de editor para salvar o RDO.', 'error');
+        setActiveTab('usuarios');
+      } else {
+        showToast('Acesso Restrito: Usuários com perfil "Visualizador" não podem modificar o RDO.', 'error');
+      }
       return;
     }
+    // 1. Immediately save to persistent storage (Memory + IndexedDB + LocalStorage)
     StorageService.saveRdo(rdo);
-    FirebaseService.saveRdo(rdo).catch(console.error);
     loadData();
-    showToast(`RDO Nº ${String(rdo.numero).padStart(3, '0')} salvo com sucesso! Sincronizado no Firebase.`);
 
-    // Auto-save copies to Google Drive if enabled for this user
+    // 2. Cloud sync to Firebase
+    FirebaseService.saveRdo(rdo).catch((err) => {
+      console.warn('Sincronização em nuvem do Firebase em segundo plano/offline:', err);
+    });
+
+    // 3. Auto-save copies to Google Drive if enabled
     const storageCfg = DriveAndFolderService.getConfig(currentUser?.id);
     const obra = obras.find(o => o.id === rdo.obraId);
     const obraName = obra?.nome || 'Obra';
 
-    // Auto-save to Google Drive
     if (storageCfg.saveToDrive) {
       const userGoogle = currentUser ? DriveAndFolderService.getGoogleAccount(currentUser.id) : null;
       const driveToken = userGoogle?.accessToken || getCachedDriveAccessToken();
+
       if (driveToken) {
+        showToast(`RDO Nº ${String(rdo.numero).padStart(3, '0')} salvo no app! Enviando ao Google Drive...`, 'info');
         (async () => {
           try {
             const pdfSubfolder = storageCfg.drivePdfSubfolder?.trim() || 'Relatórios em PDF';
@@ -259,11 +306,18 @@ export default function App() {
                 }
               }
             }
-          } catch (e) {
+
+            showToast(`RDO Nº ${String(rdo.numero).padStart(3, '0')} salvo no app e sincronizado no Google Drive!`, 'success');
+          } catch (e: any) {
             console.warn('Auto-save to Drive error:', e);
+            showToast(`RDO Nº ${String(rdo.numero).padStart(3, '0')} guardado no app com sucesso! (Aviso: para enviar ao Drive, reconecte sua conta do Google nas Configurações).`, 'info');
           }
         })();
+      } else {
+        showToast(`RDO Nº ${String(rdo.numero).padStart(3, '0')} salvo com sucesso e guardado no app! (Para sincronizar cópia no Google Drive, conecte sua conta nas Configurações).`, 'info');
       }
+    } else {
+      showToast(`RDO Nº ${String(rdo.numero).padStart(3, '0')} salvo com sucesso e disponível no aplicativo!`, 'success');
     }
   };
 
@@ -274,7 +328,12 @@ export default function App() {
 
   const handleDeleteRdo = (id: string) => {
     if (isViewer) {
-      showToast('Acesso Restrito: Usuários com perfil "Visualizador" não podem excluir relatórios.', 'error');
+      if (!currentUser) {
+        showToast('Modo Visitante: Identifique-se com um login autorizado para excluir relatórios.', 'error');
+        setActiveTab('usuarios');
+      } else {
+        showToast('Acesso Restrito: Usuários com perfil "Visualizador" não podem excluir relatórios.', 'error');
+      }
       return;
     }
     StorageService.deleteRdo(id);
@@ -285,6 +344,10 @@ export default function App() {
 
   // USUÁRIOS E LOGINS HANDLERS
   const handleSaveUsuario = (user: UsuarioEquipe) => {
+    if (isViewer) {
+      showToast('Acesso Restrito: Apenas administradores/editores autorizados podem cadastrar ou alterar logins.', 'error');
+      return;
+    }
     StorageService.saveUsuario(user);
     FirebaseService.saveUsuario(user).catch(console.error);
     loadData();
@@ -292,6 +355,10 @@ export default function App() {
   };
 
   const handleDeleteUsuario = (id: string) => {
+    if (isViewer) {
+      showToast('Acesso Restrito: Usuários em modo visitante ou visualizadores não podem excluir logins.', 'error');
+      return;
+    }
     StorageService.deleteUsuario(id);
     FirebaseService.deleteUsuario(id).catch(console.error);
     loadData();
@@ -299,6 +366,10 @@ export default function App() {
   };
 
   const handleToggleStatusUsuario = (user: UsuarioEquipe) => {
+    if (isViewer) {
+      showToast('Acesso Restrito: Usuários em modo visitante ou visualizadores não podem alterar status de logins.', 'error');
+      return;
+    }
     const updated = { ...user, ativo: !user.ativo };
     StorageService.saveUsuario(updated);
     FirebaseService.saveUsuario(updated).catch(console.error);
@@ -306,7 +377,7 @@ export default function App() {
     showToast(`Acesso de ${user.nome} ${updated.ativo ? 'ativado' : 'bloqueado'}.`);
   };
 
-  const handleSelectCurrentUser = (user: UsuarioEquipe) => {
+  const handleSelectCurrentUser = (user: UsuarioEquipe | null) => {
     StorageService.setCurrentUser(user);
     setCurrentUser(user);
   };
@@ -346,7 +417,12 @@ export default function App() {
   // NAVIGATION SHORTCUTS
   const handleOpenNewRdo = (obraId?: string, initialDate?: string) => {
     if (isViewer) {
-      showToast('Acesso Restrito: Usuários com perfil "Visualizador" têm permissão somente de leitura e não podem emitir novos RDOs.', 'error');
+      if (!currentUser) {
+        showToast('Modo Visitante: Identifique-se com um login autorizado para emitir novos RDOs.', 'error');
+        setActiveTab('usuarios');
+      } else {
+        showToast('Acesso Restrito: Usuários com perfil "Visualizador" têm permissão somente de leitura.', 'error');
+      }
       return;
     }
     setEditingRdo(null);
@@ -357,7 +433,7 @@ export default function App() {
 
   const handleEditRdo = (rdo: RelatorioDiarioObra) => {
     if (isViewer) {
-      showToast('Perfil Visualizador: Abrindo o RDO em modo de consulta (somente leitura).', 'info');
+      showToast('Modo Somente Leitura: Abrindo o RDO em modo de consulta detalhada.', 'info');
       handleViewRdo(rdo);
       return;
     }
@@ -415,6 +491,7 @@ export default function App() {
           setIsSidebarOpen(false);
         }}
         currentUser={currentUser}
+        canEdit={!isViewer}
         onNavigateUsuarios={() => {
           setActiveTab('usuarios');
           setIsSidebarOpen(false);
@@ -443,6 +520,7 @@ export default function App() {
             setActiveTab(tab);
           }}
           onNewRdo={() => handleOpenNewRdo()}
+          canEdit={!isViewer}
           rdosCount={rdos.length}
           obrasCount={obras.length}
           colaboradoresCount={colaboradores.length}
@@ -466,10 +544,10 @@ export default function App() {
                   </div>
                   <div>
                     <span className="font-bold block text-sky-950">
-                      Modo Visualizador Ativo ({currentUser?.nome})
+                      {currentUser ? `Modo Visualizador Ativo (${currentUser.nome})` : 'Modo Visitante / Link Compartilhado (Somente Leitura)'}
                     </span>
                     <span className="text-sky-800 text-[11px]">
-                      Você tem permissão para <strong>consultar relatórios, fotos e baixar PDFs</strong>. Operações de modificação (criar, editar e excluir RDOs) estão bloqueadas.
+                      Você tem permissão para <strong>consultar relatórios, fotos e baixar PDFs oficiais</strong>. Operações de modificação (criar, editar e excluir) estão protegidas.
                     </span>
                   </div>
                 </div>
@@ -478,7 +556,7 @@ export default function App() {
                   onClick={() => setActiveTab('usuarios')}
                   className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold text-[11px] shadow-2xs shrink-0 transition-colors self-end sm:self-auto"
                 >
-                  Alternar Perfil / Logins
+                  {currentUser ? 'Alternar Perfil / Logins' : 'Fazer Login / Entrar'}
                 </button>
               </div>
             )}
@@ -488,6 +566,7 @@ export default function App() {
                 obras={obras}
                 rdos={rdos}
                 colaboradores={colaboradores}
+                canEdit={!isViewer}
                 onSelectTab={(tab) => {
                   if (tab === 'rdos') setRdoObraFilter('todas');
                   setActiveTab(tab);
@@ -511,6 +590,7 @@ export default function App() {
               <ObrasList
                 obras={obras}
                 rdos={rdos}
+                canEdit={!isViewer}
                 onNewObra={() => {
                   if (isViewer) {
                     showToast('Acesso Restrito: Usuários com perfil Visualizador não podem cadastrar obras.', 'error');
@@ -537,6 +617,7 @@ export default function App() {
               <RdoList
                 rdos={rdos}
                 obras={obras}
+                canEdit={!isViewer}
                 onNewRdo={() => handleOpenNewRdo()}
                 onViewRdo={handleViewRdo}
                 onEditRdo={handleEditRdo}
@@ -561,6 +642,7 @@ export default function App() {
             {activeTab === 'colaboradores' && (
               <ColaboradoresView
                 colaboradores={colaboradores}
+                canEdit={!isViewer}
                 onSaveColaborador={handleSaveColaborador}
                 onDeleteColaborador={handleDeleteColaborador}
               />
@@ -569,6 +651,7 @@ export default function App() {
             {activeTab === 'equipamentos' && (
               <EquipamentosView
                 equipamentos={equipamentos}
+                canEdit={!isViewer}
                 onSaveEquipamento={handleSaveEquipamento}
                 onDeleteEquipamento={handleDeleteEquipamento}
               />
@@ -579,6 +662,7 @@ export default function App() {
                 usuarios={usuarios}
                 obras={obras}
                 currentUser={currentUser}
+                canEdit={!isViewer}
                 onSelectCurrentUser={handleSelectCurrentUser}
                 onNewUsuario={() => {
                   setEditingUsuario(null);
@@ -691,6 +775,7 @@ export default function App() {
           }}
           rdo={viewingRdo}
           obra={obras.find(o => o.id === viewingRdo?.obraId)}
+          canEdit={!isViewer}
           onDownloadPdf={handleDownloadPdf}
           onShareRdo={handleShareRdo}
           onEditRdo={handleEditRdo}

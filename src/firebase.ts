@@ -30,10 +30,20 @@ export interface FirestoreErrorInfo {
 }
 
 // Initialize Firebase SDK
-export const app = initializeApp(firebaseConfig);
+const metaEnv = (import.meta as any).env || {};
+const resolvedFirebaseConfig = {
+  apiKey: metaEnv.VITE_FIREBASE_API_KEY || (firebaseConfig as any)?.apiKey,
+  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || (firebaseConfig as any)?.authDomain,
+  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID || (firebaseConfig as any)?.projectId,
+  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || (firebaseConfig as any)?.storageBucket,
+  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || (firebaseConfig as any)?.messagingSenderId,
+  appId: metaEnv.VITE_FIREBASE_APP_ID || (firebaseConfig as any)?.appId,
+};
+
+export const app = initializeApp(resolvedFirebaseConfig);
 
 // CRITICAL: Initialize Firestore (default or specified database)
-const firestoreDbId = (firebaseConfig as any).firestoreDatabaseId || '(default)';
+const firestoreDbId = (firebaseConfig as any)?.firestoreDatabaseId || '(default)';
 export const db = firestoreDbId === '(default)' ? getFirestore(app) : getFirestore(app, firestoreDbId);
 
 // Initialize Firebase Authentication

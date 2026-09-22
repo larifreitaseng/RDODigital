@@ -23,6 +23,7 @@ interface ObrasListProps {
   onDeleteObra: (id: string) => void;
   onNewRdoForObra: (obraId: string) => void;
   onFilterRdosByObra: (obraId: string) => void;
+  canEdit?: boolean;
 }
 
 export const ObrasList: React.FC<ObrasListProps> = ({
@@ -32,7 +33,8 @@ export const ObrasList: React.FC<ObrasListProps> = ({
   onEditObra,
   onDeleteObra,
   onNewRdoForObra,
-  onFilterRdosByObra
+  onFilterRdosByObra,
+  canEdit = true
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('todos');
@@ -72,13 +74,23 @@ export const ObrasList: React.FC<ObrasListProps> = ({
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">Cadastro de Obras</h2>
           <p className="text-xs text-slate-500">Gerenciamento de canteiros, contratos e etapas construtivas</p>
         </div>
-        <button
-          onClick={onNewObra}
-          className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-          Cadastrar Nova Obra
-        </button>
+        {canEdit ? (
+          <button
+            onClick={onNewObra}
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            Cadastrar Nova Obra
+          </button>
+        ) : (
+          <button
+            onClick={onNewObra}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 font-semibold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all"
+            title="Faça login para cadastrar novas obras"
+          >
+            <span>Entrar para Cadastrar Obra</span>
+          </button>
+        )}
       </div>
 
       {/* Filters Bar */}
@@ -210,35 +222,39 @@ export const ObrasList: React.FC<ObrasListProps> = ({
                       <FileText className="w-3.5 h-3.5 text-slate-500" />
                       <span>{obraRdos.length} Diários (RDO)</span>
                     </button>
-                    <button
-                      onClick={() => onNewRdoForObra(obra.id)}
-                      className="px-2.5 py-1.5 text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors flex items-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Novo RDO
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => onNewRdoForObra(obra.id)}
+                        className="px-2.5 py-1.5 text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Novo RDO
+                      </button>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => onEditObra(obra)}
-                      title="Editar cadastro"
-                      className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm(`Deseja realmente excluir a obra "${obra.nome}" e seus relatórios vinculados?`)) {
-                          onDeleteObra(obra.id);
-                        }
-                      }}
-                      title="Excluir obra"
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => onEditObra(obra)}
+                        title="Editar cadastro"
+                        className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Deseja realmente excluir a obra "${obra.nome}" e seus relatórios vinculados?`)) {
+                            onDeleteObra(obra.id);
+                          }
+                        }}
+                        title="Excluir obra"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
               </div>

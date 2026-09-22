@@ -42,6 +42,7 @@ import {
   UsuarioEquipe
 } from '../types';
 import { StorageService } from '../services/storageService';
+import { compressImage } from '../services/imageCompression';
 
 export const ETAPAS_CATEGORIZADAS = [
   {
@@ -940,7 +941,7 @@ export const RdoFormModal: React.FC<RdoFormModalProps> = ({
     startCamera(nextFacing);
   };
 
-  const capturePhotoFromCamera = () => {
+  const capturePhotoFromCamera = async () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
@@ -950,21 +951,32 @@ export const RdoFormModal: React.FC<RdoFormModalProps> = ({
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+    const rawDataUrl = canvas.toDataURL('image/jpeg', 0.85);
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const currentEtapa = atividades[0]?.etapa || currentObra?.etapas?.[0] || 'Registro de Campo';
 
-    const newPhoto: FotoRDO = {
-      id: `foto-${Date.now()}-${Math.random()}`,
-      url: dataUrl,
-      legenda: `Registro instantâneo em campo - ${timeStr}`,
-      etapa: currentEtapa,
-      horario: timeStr
-    };
-
-    setFotos(prev => [...prev, newPhoto]);
+    try {
+      const compressedUrl = await compressImage(rawDataUrl, { maxWidth: 1280, maxHeight: 1280, quality: 0.75 });
+      const newPhoto: FotoRDO = {
+        id: `foto-${Date.now()}-${Math.random()}`,
+        url: compressedUrl,
+        legenda: `Registro instantâneo em campo - ${timeStr}`,
+        etapa: currentEtapa,
+        horario: timeStr
+      };
+      setFotos(prev => [...prev, newPhoto]);
+    } catch {
+      const newPhoto: FotoRDO = {
+        id: `foto-${Date.now()}-${Math.random()}`,
+        url: rawDataUrl,
+        legenda: `Registro instantâneo em campo - ${timeStr}`,
+        etapa: currentEtapa,
+        horario: timeStr
+      };
+      setFotos(prev => [...prev, newPhoto]);
+    }
     stopCamera();
   };
 
@@ -973,21 +985,20 @@ export const RdoFormModal: React.FC<RdoFormModalProps> = ({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file: File) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          const newPhoto: FotoRDO = {
-            id: `foto-${Date.now()}-${Math.random()}`,
-            url: event.target.result as string,
-            legenda: file.name.replace(/\.[^/.]+$/, ''),
-            etapa: currentObra?.etapas?.[0] || 'Registro de Obra',
-            horario: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-          };
-          setFotos(prev => [...prev, newPhoto]);
-        }
-      };
-      reader.readAsDataURL(file);
+    Array.from(files).forEach(async (file: File) => {
+      try {
+        const compressedUrl = await compressImage(file, { maxWidth: 1280, maxHeight: 1280, quality: 0.75 });
+        const newPhoto: FotoRDO = {
+          id: `foto-${Date.now()}-${Math.random()}`,
+          url: compressedUrl,
+          legenda: file.name.replace(/\.[^/.]+$/, ''),
+          etapa: currentObra?.etapas?.[0] || 'Registro de Obra',
+          horario: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        };
+        setFotos(prev => [...prev, newPhoto]);
+      } catch (err) {
+        console.warn('Erro ao processar e comprimir imagem selecionada:', err);
+      }
     });
 
     e.target.value = '';
@@ -1001,7 +1012,7 @@ export const RdoFormModal: React.FC<RdoFormModalProps> = ({
     setFotos(fotos.map(f => f.id === id ? { ...f, [field]: value } : f));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!obraId) {
@@ -1013,6 +1024,21 @@ export const RdoFormModal: React.FC<RdoFormModalProps> = ({
       alert('Selecione a data do relatório.');
       return;
     }
+
+    // Certifica que todas as fotos anexadas estejam otimizadas antes de persistir
+    const sanitizedFotos: FotoRDO[] = await Promise.all(
+      fotos.map(async (foto) => {
+        if (foto.url && foto.url.length > 250000) {
+          try {
+            const compressed = await compressImage(foto.url, { maxWidth: 1280, maxHeight: 1280, quality: 0.75 });
+            return { ...foto, url: compressed };
+          } catch {
+            return foto;
+          }
+        }
+        return foto;
+      })
+    );
 
     const rdo: RelatorioDiarioObra = {
       id: editingRdo ? editingRdo.id : `rdo-${Date.now()}`,
@@ -1039,7 +1065,7 @@ export const RdoFormModal: React.FC<RdoFormModalProps> = ({
       equipamentos: equipamentosAlocados,
       atividades,
       ocorrencias,
-      fotos,
+      fotos: sanitizedFotos,
       observacoesGerais: observacoesGerais.trim(),
       createdAt: editingRdo ? editingRdo.createdAt : new Date().toISOString(),
       updatedAt: new Date().toISOString()

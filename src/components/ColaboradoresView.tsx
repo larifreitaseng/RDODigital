@@ -19,12 +19,14 @@ interface ColaboradoresViewProps {
   colaboradores: Colaborador[];
   onSaveColaborador: (colaborador: Colaborador) => void;
   onDeleteColaborador: (id: string) => void;
+  canEdit?: boolean;
 }
 
 export const ColaboradoresView: React.FC<ColaboradoresViewProps> = ({
   colaboradores,
   onSaveColaborador,
-  onDeleteColaborador
+  onDeleteColaborador,
+  canEdit = true
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<string>('todos');
@@ -119,13 +121,15 @@ export const ColaboradoresView: React.FC<ColaboradoresViewProps> = ({
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">Gestão dos Colaboradores e Mão de Obra</h2>
           <p className="text-xs text-slate-500">Cadastre operários, encarregados, engenheiros e subempreiteiros para alocação no RDO</p>
         </div>
-        <button
-          onClick={() => openModal()}
-          className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-          Cadastrar Colaborador
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => openModal()}
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            Cadastrar Colaborador
+          </button>
+        )}
       </div>
 
       {/* Quick Summary Cards */}
@@ -231,47 +235,62 @@ export const ColaboradoresView: React.FC<ColaboradoresViewProps> = ({
                       )}
                     </td>
                     <td className="py-3.5 px-4">
-                      <button
-                        onClick={() => toggleStatus(colab)}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
+                      {canEdit ? (
+                        <button
+                          onClick={() => toggleStatus(colab)}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
+                            colab.ativo 
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-rose-50 hover:text-rose-700' 
+                              : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700'
+                          }`}
+                          title="Clique para alternar status"
+                        >
+                          {colab.ativo ? (
+                            <>
+                              <UserCheck className="w-3 h-3" /> Ativo
+                            </>
+                          ) : (
+                            <>
+                              <UserX className="w-3 h-3" /> Inativo
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           colab.ativo 
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-rose-50 hover:text-rose-700' 
-                            : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700'
-                        }`}
-                        title="Clique para alternar status"
-                      >
-                        {colab.ativo ? (
-                          <>
-                            <UserCheck className="w-3 h-3" /> Ativo
-                          </>
-                        ) : (
-                          <>
-                            <UserX className="w-3 h-3" /> Inativo
-                          </>
-                        )}
-                      </button>
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                            : 'bg-slate-100 text-slate-500 border border-slate-200'
+                        }`}>
+                          {colab.ativo ? <UserCheck className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
+                          {colab.ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => openModal(colab)}
-                          title="Editar"
-                          className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Deseja excluir "${colab.nome}"?`)) {
-                              onDeleteColaborador(colab.id);
-                            }
-                          }}
-                          title="Excluir"
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {canEdit ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openModal(colab)}
+                            title="Editar"
+                            className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Deseja excluir "${colab.nome}"?`)) {
+                                onDeleteColaborador(colab.id);
+                              }
+                            }}
+                            title="Excluir"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-mono">-</span>
+                      )}
                     </td>
                   </tr>
                 ))

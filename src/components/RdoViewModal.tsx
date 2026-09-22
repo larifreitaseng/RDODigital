@@ -33,6 +33,7 @@ interface RdoViewModalProps {
   onShareRdo: (rdo: RelatorioDiarioObra) => void;
   onEditRdo: (rdo: RelatorioDiarioObra) => void;
   onShowToast?: (text: string, type?: 'success' | 'info' | 'error') => void;
+  canEdit?: boolean;
 }
 
 export const RdoViewModal: React.FC<RdoViewModalProps> = ({
@@ -43,7 +44,8 @@ export const RdoViewModal: React.FC<RdoViewModalProps> = ({
   onDownloadPdf,
   onShareRdo,
   onEditRdo,
-  onShowToast
+  onShowToast,
+  canEdit = true
 }) => {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [isSavingToDrive, setIsSavingToDrive] = useState(false);
@@ -249,16 +251,18 @@ export const RdoViewModal: React.FC<RdoViewModalProps> = ({
               <Share2 className="w-4 h-4" />
             </button>
 
-            <button
-              onClick={() => {
-                onClose();
-                onEditRdo(rdo);
-              }}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors"
-              title="Editar RDO"
-            >
-              <Edit className="w-4 h-4" />
-            </button>
+            {canEdit && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEditRdo(rdo);
+                }}
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors"
+                title="Editar RDO"
+              >
+                <Edit className="w-4 h-4" />
+              </button>
+            )}
 
             <button
               onClick={onClose}

@@ -10,6 +10,92 @@ const KEYS = {
   CURRENT_USER: 'rdo_current_user_v1'
 };
 
+// In-memory cache to guarantee instantaneous retrieval
+let memoryRdosCache: RelatorioDiarioObra[] | null = null;
+let isIndexedDbInitialized = false;
+
+// Native IndexedDB Helper for permanent local storage without quota limits
+const DB_NAME = 'RdoEngenhariaDB';
+const DB_VERSION = 1;
+const STORE_RDOS = 'rdos';
+const STORE_OBRAS = 'obras';
+
+function openIndexedDb(): Promise<IDBDatabase | null> {
+  if (typeof window === 'undefined' || !('indexedDB' in window)) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(STORE_RDOS)) {
+          db.createObjectStore(STORE_RDOS, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(STORE_OBRAS)) {
+          db.createObjectStore(STORE_OBRAS, { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => {
+        console.warn('IndexedDB unavailable, using localStorage fallback');
+        resolve(null);
+      };
+    } catch (e) {
+      console.warn('Erro ao abrir IndexedDB:', e);
+      resolve(null);
+    }
+  });
+}
+
+async function saveToIndexedDb<T extends { id: string }>(storeName: string, item: T): Promise<void> {
+  const db = await openIndexedDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      store.put(item);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
+async function loadAllFromIndexedDb<T>(storeName: string): Promise<T[]> {
+  const db = await openIndexedDb();
+  if (!db) return [];
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(storeName, 'readonly');
+      const store = tx.objectStore(storeName);
+      const req = store.getAll();
+      req.onsuccess = () => resolve((req.result as T[]) || []);
+      req.onerror = () => resolve([]);
+    } catch {
+      resolve([]);
+    }
+  });
+}
+
+async function deleteFromIndexedDb(storeName: string, id: string): Promise<void> {
+  const db = await openIndexedDb();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      store.delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
 function getStored<T>(key: string, fallback: T): T {
   try {
     const item = localStorage.getItem(key);
@@ -28,11 +114,50 @@ function setStored<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (err) {
-    console.error(`Erro ao salvar chave ${key}:`, err);
+    console.warn(`Aviso de quota ao salvar chave ${key} no localStorage:`, err);
+    // If quota exceeded, try trimming old/secondary items while keeping memory cache intact
   }
 }
 
 export const StorageService = {
+  /**
+   * Initializes IndexedDB background sync on app launch
+   */
+  async initAsyncStorage(onLoaded?: (rdos: RelatorioDiarioObra[]) => void): Promise<RelatorioDiarioObra[]> {
+    if (isIndexedDbInitialized && memoryRdosCache) {
+      return memoryRdosCache;
+    }
+    try {
+      const dbRdos = await loadAllFromIndexedDb<RelatorioDiarioObra>(STORE_RDOS);
+      const localRdos = getStored<RelatorioDiarioObra[]>(KEYS.RDOS, INITIAL_RDOS);
+      
+      // Merge IndexedDB and LocalStorage, taking newest version of each
+      const mergedMap = new Map<string, RelatorioDiarioObra>();
+      for (const r of localRdos) mergedMap.set(r.id, r);
+      for (const r of dbRdos) {
+        const existing = mergedMap.get(r.id);
+        if (!existing || (r.updatedAt && (!existing.updatedAt || r.updatedAt >= existing.updatedAt))) {
+          mergedMap.set(r.id, r);
+        }
+      }
+
+      const mergedList = Array.from(mergedMap.values()).sort((a, b) => (b.numero || 0) - (a.numero || 0));
+      memoryRdosCache = mergedList;
+      isIndexedDbInitialized = true;
+
+      // Ensure localStorage has updated copy
+      setStored(KEYS.RDOS, mergedList);
+
+      if (onLoaded) {
+        onLoaded(mergedList);
+      }
+      return mergedList;
+    } catch (e) {
+      console.warn('Erro ao inicializar IndexedDB:', e);
+      return this.getRdos();
+    }
+  },
+
   // OBRAS
   getObras(): Obra[] {
     return getStored<Obra[]>(KEYS.OBRAS, INITIAL_OBRAS);
@@ -46,13 +171,15 @@ export const StorageService = {
       obras.unshift(obra);
     }
     setStored(KEYS.OBRAS, obras);
+    saveToIndexedDb(STORE_OBRAS, obra).catch(() => {});
   },
   deleteObra(id: string): void {
     const obras = this.getObras().filter(o => o.id !== id);
     setStored(KEYS.OBRAS, obras);
+    deleteFromIndexedDb(STORE_OBRAS, id).catch(() => {});
     // Also delete associated RDOs
     const rdos = this.getRdos().filter(r => r.obraId !== id);
-    setStored(KEYS.RDOS, rdos);
+    this.setRdosLocal(rdos);
   },
 
   // COLABORADORES
@@ -95,24 +222,46 @@ export const StorageService = {
 
   // RELATÓRIOS DIÁRIOS DE OBRA (RDO)
   getRdos(): RelatorioDiarioObra[] {
-    return getStored<RelatorioDiarioObra[]>(KEYS.RDOS, INITIAL_RDOS);
+    if (memoryRdosCache && memoryRdosCache.length > 0) {
+      return memoryRdosCache;
+    }
+    const list = getStored<RelatorioDiarioObra[]>(KEYS.RDOS, INITIAL_RDOS);
+    memoryRdosCache = list;
+    return list;
   },
   getRdosByObra(obraId: string): RelatorioDiarioObra[] {
     return this.getRdos().filter(r => r.obraId === obraId);
   },
   saveRdo(rdo: RelatorioDiarioObra): void {
-    const list = this.getRdos();
+    const list = [...this.getRdos()];
+    const nowIso = new Date().toISOString();
+    const rdoWithTimestamps: RelatorioDiarioObra = {
+      ...rdo,
+      createdAt: rdo.createdAt || nowIso,
+      updatedAt: nowIso
+    };
+
     const idx = list.findIndex(r => r.id === rdo.id);
     if (idx >= 0) {
-      list[idx] = { ...rdo, updatedAt: new Date().toISOString() };
+      list[idx] = rdoWithTimestamps;
     } else {
-      list.unshift({ ...rdo, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      list.unshift(rdoWithTimestamps);
     }
+
+    // 1. Update memory cache immediately
+    memoryRdosCache = list;
+
+    // 2. Persist to localStorage
     setStored(KEYS.RDOS, list);
+
+    // 3. Persist to IndexedDB asynchronously (guarantees persistence even if photos are large)
+    saveToIndexedDb(STORE_RDOS, rdoWithTimestamps).catch(e => console.warn('Erro ao salvar RDO no IndexedDB:', e));
   },
   deleteRdo(id: string): void {
     const list = this.getRdos().filter(r => r.id !== id);
+    memoryRdosCache = list;
     setStored(KEYS.RDOS, list);
+    deleteFromIndexedDb(STORE_RDOS, id).catch(() => {});
   },
   getNextNumeroRdo(obraId: string): number {
     const rdos = this.getRdosByObra(obraId);
@@ -197,7 +346,8 @@ export const StorageService = {
       const match = users.find(u => u.id === stored.id);
       if (match) return match;
     }
-    return users[0] || null;
+    // Shared link / new session starts strictly in Visitor Mode (null)
+    return null;
   },
   setCurrentUser(user: UsuarioEquipe | null): void {
     if (!user) {
@@ -218,9 +368,46 @@ export const StorageService = {
   setEquipamentosLocal(equipamentos: Equipamento[]): void {
     setStored(KEYS.EQUIPAMENTOS, equipamentos);
   },
-  setRdosLocal(rdos: RelatorioDiarioObra[]): void {
-    setStored(KEYS.RDOS, rdos);
+
+  /**
+   * Smart merge when Firestore updates:
+   * Merges incoming Firestore RDOS with any locally created RDOS that haven't synced yet.
+   * NEVER loses a locally authored RDO!
+   */
+  setRdosLocal(incomingRdos: RelatorioDiarioObra[]): RelatorioDiarioObra[] {
+    const currentLocal = this.getRdos();
+    const mergedMap = new Map<string, RelatorioDiarioObra>();
+
+    // Add all current local items first
+    for (const r of currentLocal) {
+      mergedMap.set(r.id, r);
+    }
+
+    // Merge incoming Firestore items
+    for (const remote of incomingRdos) {
+      const local = mergedMap.get(remote.id);
+      if (!local) {
+        mergedMap.set(remote.id, remote);
+      } else {
+        // If remote has newer or equal updatedAt, take remote; otherwise preserve local
+        if (!local.updatedAt || (remote.updatedAt && remote.updatedAt >= local.updatedAt)) {
+          mergedMap.set(remote.id, remote);
+        }
+      }
+    }
+
+    const mergedList = Array.from(mergedMap.values()).sort((a, b) => (b.numero || 0) - (a.numero || 0));
+    memoryRdosCache = mergedList;
+    setStored(KEYS.RDOS, mergedList);
+
+    // Save all to IndexedDB in background
+    for (const r of mergedList) {
+      saveToIndexedDb(STORE_RDOS, r).catch(() => {});
+    }
+
+    return mergedList;
   },
+
   setUsuariosLocal(usuarios: UsuarioEquipe[]): void {
     setStored(KEYS.USUARIOS, usuarios);
   },

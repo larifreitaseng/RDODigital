@@ -28,12 +28,13 @@ interface UsuariosViewProps {
   usuarios: UsuarioEquipe[];
   obras: Obra[];
   currentUser: UsuarioEquipe | null;
-  onSelectCurrentUser: (usuario: UsuarioEquipe) => void;
+  onSelectCurrentUser: (usuario: UsuarioEquipe | null) => void;
   onNewUsuario: () => void;
   onEditUsuario: (usuario: UsuarioEquipe) => void;
   onDeleteUsuario: (id: string) => void;
   onToggleStatus: (usuario: UsuarioEquipe) => void;
   onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
+  canEdit?: boolean;
 }
 
 export const UsuariosView: React.FC<UsuariosViewProps> = ({
@@ -45,7 +46,8 @@ export const UsuariosView: React.FC<UsuariosViewProps> = ({
   onEditUsuario,
   onDeleteUsuario,
   onToggleStatus,
-  onShowToast
+  onShowToast,
+  canEdit = true
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPerfil, setFilterPerfil] = useState<string>('todos');
@@ -102,18 +104,20 @@ export const UsuariosView: React.FC<UsuariosViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={onNewUsuario}
-          id="btn-cadastrar-novo-login"
-          className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all shrink-0 active:scale-95"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-          <span>Cadastrar Novo Login</span>
-        </button>
+        {canEdit && (
+          <button
+            onClick={onNewUsuario}
+            id="btn-cadastrar-novo-login"
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm shadow-sm transition-all shrink-0 active:scale-95"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>Cadastrar Novo Login</span>
+          </button>
+        )}
       </div>
 
       {/* ACTIVE USER SIMULATOR / CONTROLLER BANNER */}
-      {currentUser && (
+      {currentUser ? (
         <div className={`p-4 rounded-2xl border transition-all shadow-2xs ${
           currentUser.perfil === 'editor'
             ? 'bg-amber-500/10 border-amber-500/30'
@@ -160,23 +164,84 @@ export const UsuariosView: React.FC<UsuariosViewProps> = ({
               </div>
             </div>
 
-            {/* Quick Switcher dropdown to test roles */}
-            <div className="flex items-center gap-2 self-end md:self-center shrink-0 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-              <ArrowRightLeft className="w-4 h-4 text-slate-400 shrink-0" />
-              <div className="text-[11px] text-slate-600 font-medium">
-                Simular login como:
+            {/* Quick Switcher & Logout to Visitor Mode */}
+            <div className="flex flex-wrap items-center gap-2 self-end md:self-center shrink-0">
+              <div className="flex items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
+                <ArrowRightLeft className="w-4 h-4 text-slate-400 shrink-0" />
+                <div className="text-[11px] text-slate-600 font-medium">
+                  Alternar login:
+                </div>
+                <select
+                  value={currentUser.id}
+                  onChange={(e) => {
+                    const selected = usuarios.find(u => u.id === e.target.value);
+                    if (selected) {
+                      onSelectCurrentUser(selected);
+                      onShowToast(`Sessão alterada para: ${selected.nome} (${selected.perfil === 'editor' ? 'Pode Modificar' : 'Visualizador'})`);
+                    }
+                  }}
+                  className="text-xs font-bold border-none bg-slate-50 py-1.5 px-2.5 rounded-lg text-slate-800 focus:ring-1 focus:ring-amber-500"
+                >
+                  {usuarios.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.nome} ({u.perfil === 'editor' ? 'Editor' : 'Visualizador'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                onClick={() => {
+                  onSelectCurrentUser(null);
+                  onShowToast('Sessão desconectada. Você está no Modo Visitante (somente leitura).', 'info');
+                }}
+                className="px-3 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors"
+                title="Desconectar e voltar para o Modo Visitante protegido"
+              >
+                Sair (Modo Visitante)
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="p-4 rounded-2xl border bg-slate-900 text-white border-slate-800 shadow-2xs">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 font-black shadow-xs">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                    Modo Visitante Ativo (Sem Conta Conectada)
+                  </span>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
+                    Somente Leitura e Visualização
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-1 max-w-2xl">
+                  Ao compartilhar este link, os visitantes podem consultar todos os diários de obra e baixar PDFs oficiais, <strong>sem poder alterar, criar ou apagar relatórios</strong>. Para fazer modificações, escolha sua conta abaixo para fazer login.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end md:self-center shrink-0 bg-slate-800 p-2 rounded-xl border border-slate-700">
+              <KeyRound className="w-4 h-4 text-amber-400 shrink-0" />
+              <div className="text-[11px] text-slate-300 font-medium">
+                Entrar como:
               </div>
               <select
-                value={currentUser.id}
+                defaultValue=""
                 onChange={(e) => {
                   const selected = usuarios.find(u => u.id === e.target.value);
                   if (selected) {
                     onSelectCurrentUser(selected);
-                    onShowToast(`Sessão alterada para: ${selected.nome} (${selected.perfil === 'editor' ? 'Pode Modificar' : 'Visualizador'})`);
+                    onShowToast(`Login efetuado como ${selected.nome}! Permissão: ${selected.perfil === 'editor' ? 'Pode Modificar' : 'Visualizador'}`);
                   }
                 }}
-                className="text-xs font-bold border-none bg-slate-50 py-1.5 px-2.5 rounded-lg text-slate-800 focus:ring-1 focus:ring-amber-500"
+                className="text-xs font-bold border-none bg-slate-900 py-1.5 px-2.5 rounded-lg text-amber-300 focus:ring-1 focus:ring-amber-500 cursor-pointer"
               >
+                <option value="" disabled>Selecione um login...</option>
                 {usuarios.map(u => (
                   <option key={u.id} value={u.id}>
                     {u.nome} ({u.perfil === 'editor' ? 'Editor' : 'Visualizador'})
@@ -470,27 +535,30 @@ export const UsuariosView: React.FC<UsuariosViewProps> = ({
                       <span className="hidden sm:inline">{copiedId === user.id ? 'Copiado!' : 'Copiar'}</span>
                     </button>
 
-                    {/* Edit */}
-                    <button
-                      onClick={() => onEditUsuario(user)}
-                      className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                      title="Editar dados e permissões"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
+                    {/* Edit & Delete Actions (Editors only) */}
+                    {canEdit && (
+                      <>
+                        <button
+                          onClick={() => onEditUsuario(user)}
+                          className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                          title="Editar dados e permissões"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
 
-                    {/* Delete */}
-                    <button
-                      onClick={() => {
-                        if (confirm(`Deseja realmente remover o login de ${user.nome}?`)) {
-                          onDeleteUsuario(user.id);
-                        }
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      title="Excluir login"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Deseja realmente remover o login de ${user.nome}?`)) {
+                              onDeleteUsuario(user.id);
+                            }
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="Excluir login"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
 
                 </div>

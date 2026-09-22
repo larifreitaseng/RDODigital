@@ -470,6 +470,86 @@ export const DriveAndFolderService = {
   // ----------------------------------------------------
 
   /**
+   * Validates if a Google Drive OAuth access token is still active and returns user profile
+   */
+  async validateDriveAccessToken(token: string): Promise<{
+    valid: boolean;
+    email?: string;
+    displayName?: string;
+    photoUrl?: string;
+    error?: string;
+  }> {
+    if (!token || !token.trim()) {
+      return { valid: false, error: 'Token não informado' };
+    }
+    try {
+      const res = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        if (res.status === 401) {
+          return { valid: false, error: 'Token do Google Drive expirado. É necessário reconectar.' };
+        }
+        return { valid: false, error: `Google Drive respondeu com status ${res.status}` };
+      }
+      const data = await res.json();
+      return {
+        valid: true,
+        email: data.user?.emailAddress || '',
+        displayName: data.user?.displayName || '',
+        photoUrl: data.user?.photoLink || ''
+      };
+    } catch (e: any) {
+      return { valid: false, error: e?.message || 'Falha ao verificar token com a API do Google Drive' };
+    }
+  },
+
+  /**
+   * Requests a Google Drive OAuth access token directly using Google Identity Services (GSI)
+   * This is especially useful on Netlify/GitHub where Firebase Auth domain permissions might be pending.
+   */
+  async requestGoogleDriveTokenGSI(clientId?: string): Promise<{ accessToken: string; email?: string } | null> {
+    const effectiveClientId = clientId?.trim() || '596099900954-6qnpgb8rdemfd61gq58dtp01tms6vh92.apps.googleusercontent.com';
+
+    return new Promise((resolve, reject) => {
+      if (typeof window === 'undefined') {
+        reject(new Error('Ambiente de navegador indisponível'));
+        return;
+      }
+
+      const google = (window as any).google;
+      if (!google?.accounts?.oauth2) {
+        reject(new Error('Google Identity Services (GSI) não foi carregado. Recarregue a página ou verifique a conexão.'));
+        return;
+      }
+
+      try {
+        const tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: effectiveClientId,
+          scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive',
+          callback: async (tokenResponse: any) => {
+            if (tokenResponse.error) {
+              reject(new Error(tokenResponse.error_description || tokenResponse.error || 'Falha ao obter permissão do Google Drive'));
+              return;
+            }
+            if (tokenResponse.access_token) {
+              resolve({
+                accessToken: tokenResponse.access_token
+              });
+            } else {
+              resolve(null);
+            }
+          }
+        });
+
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  },
+
+  /**
    * Extracts clean folder ID from a Drive URL or ID string
    */
   extractDriveFolderId(input: string): string {

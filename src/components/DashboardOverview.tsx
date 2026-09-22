@@ -26,6 +26,7 @@ interface DashboardOverviewProps {
   onViewRdo: (rdo: RelatorioDiarioObra) => void;
   onDownloadPdf: (rdo: RelatorioDiarioObra) => void;
   onShareRdo: (rdo: RelatorioDiarioObra) => void;
+  canEdit?: boolean;
 }
 
 export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
@@ -37,7 +38,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onNewObra,
   onViewRdo,
   onDownloadPdf,
-  onShareRdo
+  onShareRdo,
+  canEdit = true
 }) => {
   const obrasAtivas = obras.filter(o => o.status === 'em_andamento').length;
   
@@ -74,22 +76,45 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </p>
           </div>
           <div className="flex flex-wrap gap-2.5">
-            <button
-              id="btn-dash-novo-rdo"
-              onClick={onNewRdo}
-              className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2.5 rounded-xl text-sm transition-all shadow-md active:scale-95"
-            >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              Emitir Novo RDO
-            </button>
-            <button
-              id="btn-dash-nova-obra"
-              onClick={onNewObra}
-              className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-medium px-4 py-2.5 rounded-xl text-sm transition-all"
-            >
-              <Building2 className="w-4 h-4" />
-              Cadastrar Obra
-            </button>
+            {canEdit ? (
+              <>
+                <button
+                  id="btn-dash-novo-rdo"
+                  onClick={onNewRdo}
+                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2.5 rounded-xl text-sm transition-all shadow-md active:scale-95"
+                >
+                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                  Emitir Novo RDO
+                </button>
+                <button
+                  id="btn-dash-nova-obra"
+                  onClick={onNewObra}
+                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-medium px-4 py-2.5 rounded-xl text-sm transition-all"
+                >
+                  <Building2 className="w-4 h-4" />
+                  Cadastrar Obra
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  id="btn-dash-ver-rdos"
+                  onClick={() => onSelectTab('rdos')}
+                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2.5 rounded-xl text-sm transition-all shadow-md active:scale-95"
+                >
+                  <FileText className="w-4 h-4" />
+                  Consultar Diários (RDO)
+                </button>
+                <button
+                  id="btn-dash-fazer-login"
+                  onClick={() => onSelectTab('usuarios')}
+                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-medium px-4 py-2.5 rounded-xl text-sm transition-all"
+                >
+                  <Users className="w-4 h-4" />
+                  Fazer Login / Entrar
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

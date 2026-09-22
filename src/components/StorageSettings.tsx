@@ -19,7 +19,12 @@ import {
   Settings2,
   FolderPlus,
   FolderTree,
-  X
+  FolderSync,
+  X,
+  Copy,
+  Key,
+  Globe,
+  CheckCheck
 } from 'lucide-react';
 import { Obra, RelatorioDiarioObra } from '../types';
 import { 
@@ -29,7 +34,7 @@ import {
   LINKED_DRIVE_FOLDER_ID,
   LINKED_DRIVE_FOLDER_URL
 } from '../services/driveAndFolderService';
-import { loginWithGoogle, getCachedDriveAccessToken, auth } from '../firebase';
+import { loginWithGoogle, getCachedDriveAccessToken, setCachedDriveAccessToken, auth } from '../firebase';
 import { obterPdfBlob } from '../services/pdfService';
 import { DriveFolderPickerModal } from './DriveFolderPickerModal';
 
@@ -51,6 +56,27 @@ export const StorageSettings: React.FC<StorageSettingsProps> = ({
   const [isDriveConnecting, setIsDriveConnecting] = useState(false);
   const [driveToken, setDriveToken] = useState<string | null>(getCachedDriveAccessToken());
 
+  // Hostname & Netlify Detection
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isNetlifyOrCustom = Boolean(
+    currentHostname &&
+    (currentHostname.includes('netlify.app') ||
+     currentHostname.includes('github.io') ||
+     (!currentHostname.includes('localhost') && !currentHostname.includes('127.0.0.1')))
+  );
+
+  // Token Validation Status
+  const [tokenStatus, setTokenStatus] = useState<{
+    checking: boolean;
+    valid?: boolean;
+    error?: string;
+    email?: string;
+  }>({ checking: false });
+  const [manualToken, setManualToken] = useState('');
+  const [showManualTokenInput, setShowManualTokenInput] = useState(false);
+  const [isCopiedDomain, setIsCopiedDomain] = useState(false);
+  const [showNetlifyGuide, setShowNetlifyGuide] = useState(isNetlifyOrCustom);
+
   // Google Drive Specific Folder Modal state
   const [isDriveFolderModalOpen, setIsDriveFolderModalOpen] = useState(false);
 
@@ -65,6 +91,34 @@ export const StorageSettings: React.FC<StorageSettingsProps> = ({
   const [selectedObraId, setSelectedObraId] = useState<string>('todas');
   const [lastUploadedLink, setLastUploadedLink] = useState<string | null>(null);
 
+  // Validate Token status
+  const checkTokenValidity = async (tok?: string | null) => {
+    const tokenToCheck = tok !== undefined ? tok : (driveToken || getCachedDriveAccessToken());
+    if (!tokenToCheck) {
+      setTokenStatus({ checking: false, valid: false, error: 'Nenhum token ativo encontrado.' });
+      return;
+    }
+    setTokenStatus({ checking: true });
+    try {
+      const val = await DriveAndFolderService.validateDriveAccessToken(tokenToCheck);
+      if (val.valid) {
+        setTokenStatus({ checking: false, valid: true, email: val.email });
+      } else {
+        setTokenStatus({ checking: false, valid: false, error: val.error || 'Token expirado ou inválido.' });
+      }
+    } catch (e: any) {
+      setTokenStatus({ checking: false, valid: false, error: e.message || 'Falha ao validar token.' });
+    }
+  };
+
+  useEffect(() => {
+    if (driveToken) {
+      checkTokenValidity(driveToken);
+    } else {
+      setTokenStatus({ checking: false, valid: false });
+    }
+  }, [driveToken]);
+
   // Re-sync configuration and Google account when currentUser changes
   useEffect(() => {
     const userCfg = DriveAndFolderService.getConfig(currentUser?.id);
@@ -73,6 +127,7 @@ export const StorageSettings: React.FC<StorageSettingsProps> = ({
     if (userGoogle) {
       if (userGoogle.accessToken) {
         setDriveToken(userGoogle.accessToken);
+        setCachedDriveAccessToken(userGoogle.accessToken);
       }
       setGoogleUser({
         email: userGoogle.email,
@@ -148,8 +203,10 @@ export const StorageSettings: React.FC<StorageSettingsProps> = ({
         setGoogleUser(res.user);
         if (res.accessToken) {
           setDriveToken(res.accessToken);
+          setCachedDriveAccessToken(res.accessToken);
           loadDriveFolders(res.accessToken);
           fetchFolderMetadata(res.accessToken);
+          checkTokenValidity(res.accessToken);
         }
 
         const updated = { ...config, saveToDrive: true };
@@ -173,8 +230,8 @@ export const StorageSettings: React.FC<StorageSettingsProps> = ({
     } catch (err: any) {
       console.error('Falha login Drive:', err);
       if (err?.code === 'auth/unauthorized-domain' || String(err?.message).includes('unauthorized-domain')) {
-        onShowToast(`Domínio do Netlify não autorizado no Firebase. Vinculando conta Google de ${currentUser?.nome || 'Larissa'} diretamente...`, 'info');
-        handleQuickLinkGoogleAccount(currentUser?.email || 'larifreitaseng@gmail.com');
+        setShowNetlifyGuide(true);
+        onShowToast(`Domínio do Netlify não autorizado no Firebase. Veja o passo a passo abaixo para liberar ou conecte via Google Identity (GSI)!`, 'info');
       } else if (err?.code === 'auth/popup-closed-by-user' || String(err?.message).includes('popup-closed-by-user')) {
         onShowToast('A janela de login foi fechada antes de concluir.', 'info');
       } else {
@@ -183,6 +240,95 @@ export const StorageSettings: React.FC<StorageSettingsProps> = ({
     } finally {
       setIsDriveConnecting(false);
     }
+  };
+
+  const handleConnectGSI = async () => {
+    setIsDriveConnecting(true);
+    try {
+      const res = await DriveAndFolderService.requestGoogleDriveTokenGSI();
+      if (res && res.accessToken) {
+        setDriveToken(res.accessToken);
+        setCachedDriveAccessToken(res.accessToken);
+        loadDriveFolders(res.accessToken);
+        fetchFolderMetadata(res.accessToken);
+
+        const val = await DriveAndFolderService.validateDriveAccessToken(res.accessToken);
+        const email = val.email || currentUser?.email || 'larifreitaseng@gmail.com';
+        const name = val.displayName || currentUser?.nome || 'Engenharia';
+
+        DriveAndFolderService.saveGoogleAccount({
+          userId: currentUser?.id || 'default',
+          email,
+          displayName: name,
+          accessToken: res.accessToken,
+          connectedAt: new Date().toISOString()
+        }, currentUser?.id);
+
+        setGoogleUser({ email, displayName: name });
+        const updated = { ...config, saveToDrive: true };
+        setConfig(updated);
+        DriveAndFolderService.saveConfig(updated, currentUser?.id);
+        setTokenStatus({ checking: false, valid: true, email });
+        onShowToast(`Google Drive conectado via Google Identity (${email})! Pronto para salvar PDFs e fotos.`, 'success');
+      }
+    } catch (e: any) {
+      console.warn('GSI Auth error:', e);
+      onShowToast(e.message || 'Erro ao conectar via Google Identity.', 'error');
+    } finally {
+      setIsDriveConnecting(false);
+    }
+  };
+
+  const handleSaveManualToken = async () => {
+    if (!manualToken.trim()) {
+      onShowToast('Cole um token de acesso válido do Google OAuth.', 'error');
+      return;
+    }
+    const cleanToken = manualToken.trim();
+    setTokenStatus({ checking: true });
+    try {
+      const val = await DriveAndFolderService.validateDriveAccessToken(cleanToken);
+      if (val.valid) {
+        setDriveToken(cleanToken);
+        setCachedDriveAccessToken(cleanToken);
+        loadDriveFolders(cleanToken);
+        fetchFolderMetadata(cleanToken);
+
+        const email = val.email || currentUser?.email || 'larifreitaseng@gmail.com';
+        const name = val.displayName || currentUser?.nome || 'Engenharia';
+
+        DriveAndFolderService.saveGoogleAccount({
+          userId: currentUser?.id || 'default',
+          email,
+          displayName: name,
+          accessToken: cleanToken,
+          connectedAt: new Date().toISOString()
+        }, currentUser?.id);
+
+        setGoogleUser({ email, displayName: name });
+        const updated = { ...config, saveToDrive: true };
+        setConfig(updated);
+        DriveAndFolderService.saveConfig(updated, currentUser?.id);
+        setTokenStatus({ checking: false, valid: true, email });
+        setShowManualTokenInput(false);
+        setManualToken('');
+        onShowToast(`Token validado com sucesso para ${email}! Salva de PDFs e fotos liberada.`, 'success');
+      } else {
+        setTokenStatus({ checking: false, valid: false, error: val.error });
+        onShowToast(`Token inválido: ${val.error}`, 'error');
+      }
+    } catch (e: any) {
+      setTokenStatus({ checking: false, valid: false, error: e.message });
+      onShowToast(`Erro ao testar token: ${e.message}`, 'error');
+    }
+  };
+
+  const handleCopyDomain = () => {
+    if (!currentHostname) return;
+    navigator.clipboard.writeText(currentHostname);
+    setIsCopiedDomain(true);
+    onShowToast(`Domínio "${currentHostname}" copiado para a área de transferência!`, 'success');
+    setTimeout(() => setIsCopiedDomain(false), 3000);
   };
 
   const handleQuickLinkGoogleAccount = (customEmail?: string) => {
@@ -217,7 +363,9 @@ export const StorageSettings: React.FC<StorageSettingsProps> = ({
   const handleDisconnectGoogleDrive = () => {
     DriveAndFolderService.clearGoogleAccount(currentUser?.id);
     setDriveToken(null);
+    setCachedDriveAccessToken(null);
     setGoogleUser(null);
+    setTokenStatus({ checking: false, valid: false });
     const updated = { ...config, saveToDrive: false };
     setConfig(updated);
     DriveAndFolderService.saveConfig(updated, currentUser?.id);
@@ -433,6 +581,72 @@ export const StorageSettings: React.FC<StorageSettingsProps> = ({
         </div>
       </div>
 
+      {/* Assistente de Domínio para Netlify & GitHub Pages */}
+      {(showNetlifyGuide || isNetlifyOrCustom) && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300 rounded-2xl p-5 shadow-xs">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-amber-800 font-bold text-xs uppercase tracking-wider">
+                <Globe className="w-4 h-4 text-amber-600" />
+                <span>Configuração de Domínio para Netlify & GitHub</span>
+              </div>
+              <p className="text-sm font-semibold text-slate-800">
+                Endereço detectado: <code className="bg-white px-2 py-0.5 rounded border border-amber-300 text-amber-900 font-mono text-xs">{currentHostname || 'seu-site.netlify.app'}</code>
+              </p>
+              <p className="text-xs text-slate-600 leading-relaxed max-w-3xl">
+                O Google exige que o endereço do Netlify/GitHub esteja autorizado para permitir a geração da chave de acesso ao Google Drive (evitando o erro <em>auth/unauthorized-domain</em>).
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleCopyDomain}
+                className="bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-xs px-3 py-2 rounded-xl transition-colors shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                title="Copiar domínio para colar no Firebase"
+              >
+                {isCopiedDomain ? (
+                  <>
+                    <CheckCheck className="w-4 h-4 text-emerald-600" />
+                    <span className="text-emerald-700">Domínio Copiado!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 text-slate-600" />
+                    <span>Copiar Domínio</span>
+                  </>
+                )}
+              </button>
+
+              <a
+                href="https://console.firebase.google.com/project/gen-lang-client-0431169862/authentication/settings"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3.5 py-2 rounded-xl transition-colors shadow-2xs flex items-center gap-1.5"
+              >
+                <span>Abrir Firebase Console</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-3.5 pt-3 border-t border-amber-200/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px] text-slate-700">
+            <div className="bg-white/80 p-2.5 rounded-xl border border-amber-200/60">
+              <strong className="text-amber-900 block font-bold">1. Copie o endereço</strong>
+              Clique no botão <strong>Copiar Domínio</strong> acima.
+            </div>
+            <div className="bg-white/80 p-2.5 rounded-xl border border-amber-200/60">
+              <strong className="text-amber-900 block font-bold">2. Cole no Firebase</strong>
+              Vá em <em>Configurações &gt; Domínios autorizados &gt; Adicionar domínio</em> e salve.
+            </div>
+            <div className="bg-white/80 p-2.5 rounded-xl border border-amber-200/60">
+              <strong className="text-amber-900 block font-bold">3. Conecte com 1 clique</strong>
+              Clique em <strong>Conectar Google</strong> ou use o botão <strong>Google Identity (GSI)</strong> logo abaixo.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Storage Providers Grid (Firebase and Google Drive) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
@@ -504,52 +718,179 @@ export const StorageSettings: React.FC<StorageSettingsProps> = ({
             </p>
 
             {googleUser ? (
-              <div className="mt-3 text-[11px] font-medium text-slate-600 bg-amber-50/50 p-2.5 rounded-lg border border-amber-200/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="truncate">
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Conta Google Vinculada:</span>
-                  <span className="truncate font-bold text-slate-800">{googleUser.email || googleUser.displayName}</span>
-                  {currentUser && (
-                    <span className="text-[10px] text-amber-700 block">
-                      Vinculado a: <strong>{currentUser.nome}</strong>
-                    </span>
-                  )}
+              <div className="mt-3 space-y-2">
+                <div className="text-[11px] font-medium text-slate-600 bg-amber-50/50 p-2.5 rounded-lg border border-amber-200/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="truncate">
+                    <span className="text-[10px] text-slate-400 block uppercase font-bold">Conta Google Vinculada:</span>
+                    <span className="truncate font-bold text-slate-800">{googleUser.email || googleUser.displayName}</span>
+                    {currentUser && (
+                      <span className="text-[10px] text-amber-700 block">
+                        Vinculado a: <strong>{currentUser.nome}</strong>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => checkTokenValidity(driveToken)}
+                      disabled={tokenStatus.checking}
+                      className="text-[10px] text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 px-2 py-0.5 rounded font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                      title="Testar se o token do Google Drive ainda está válido"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${tokenStatus.checking ? 'animate-spin' : ''}`} />
+                      <span>{tokenStatus.checking ? 'Testando...' : 'Testar Token'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDisconnectGoogleDrive}
+                      title="Desconectar conta Google para este usuário"
+                      className="text-[10px] text-rose-600 hover:text-rose-800 bg-white hover:bg-rose-50 border border-rose-200 px-2 py-0.5 rounded font-semibold transition-colors cursor-pointer"
+                    >
+                      Desconectar
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="text-[10px] text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded font-semibold">Individual</span>
-                  <button
-                    type="button"
-                    onClick={handleDisconnectGoogleDrive}
-                    title="Desconectar conta Google para este usuário"
-                    className="text-[10px] text-rose-600 hover:text-rose-800 bg-white hover:bg-rose-50 border border-rose-200 px-2 py-0.5 rounded font-semibold transition-colors"
-                  >
-                    Desconectar
-                  </button>
-                </div>
+
+                {/* Token Health Status */}
+                {tokenStatus.valid ? (
+                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-2 text-emerald-800 font-semibold">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Chave de Acesso do Drive Ativa. Pronto para salvar PDFs e Fotos!</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 space-y-2 text-xs">
+                    <div className="flex items-start gap-2 text-amber-900">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="block font-bold">Autorização de Envio Pendente</strong>
+                        <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                          Para que o aplicativo possa criar pastas e enviar os relatórios em PDF e as fotos diretamente para o seu Google Drive, autorize a conexão com uma das opções:
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleConnectGoogleDrive}
+                        disabled={isDriveConnecting}
+                        className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Conectar via Google (Popup)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleConnectGSI}
+                        disabled={isDriveConnecting}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5"
+                        title="Conectar diretamente via Google Identity Services"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Conectar via Google Identity (GSI)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowManualTokenInput(!showManualTokenInput)}
+                        className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <Key className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Token Manual</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
-              <div className="mt-3 text-xs bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="mt-3 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
                 <div>
-                  <span className="text-slate-700 font-medium block">Nenhuma conta Google conectada para este usuário.</span>
-                  <span className="text-[11px] text-slate-400">Você pode autorizar pelo popup ou vincular diretamente seu e-mail.</span>
+                  <span className="text-slate-800 font-bold block">Conectar Conta Google para Salvar Arquivos:</span>
+                  <span className="text-[11px] text-slate-500">
+                    Escolha o método mais conveniente para autorizar o salvamento automático de PDFs e fotos no seu Drive.
+                  </span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLinkGoogleAccount(currentUser?.email || 'larifreitaseng@gmail.com')}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Vincular Conta</span>
-                  </button>
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={handleConnectGoogleDrive}
                     disabled={isDriveConnecting}
-                    className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors shadow-2xs cursor-pointer"
+                    className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5"
                   >
-                    {isDriveConnecting ? 'Conectando...' : 'Conectar Google'}
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isDriveConnecting ? 'Conectando...' : 'Conectar Google (Popup)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleConnectGSI}
+                    disabled={isDriveConnecting}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Conectar via Google (GSI)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleQuickLinkGoogleAccount(currentUser?.email || 'larifreitaseng@gmail.com')}
+                    className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Vincular Conta</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowManualTokenInput(!showManualTokenInput)}
+                    className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <Key className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Inserir Token</span>
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Manual Token Collapsible Box */}
+            {showManualTokenInput && (
+              <div className="mt-3 p-3.5 bg-slate-50 border border-slate-300 rounded-xl space-y-2.5 animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Inserir Chave de Acesso do Google Drive (OAuth Bearer Token):</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowManualTokenInput(false)}
+                    className="text-slate-400 hover:text-slate-600 p-0.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="password"
+                    value={manualToken}
+                    onChange={(e) => setManualToken(e.target.value)}
+                    placeholder="Cole aqui o token ya29...."
+                    className="flex-1 text-xs border border-slate-300 rounded-lg p-2 bg-white font-mono text-slate-800 focus:ring-2 focus:ring-amber-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveManualToken}
+                    disabled={tokenStatus.checking}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-lg text-xs transition-colors shadow-2xs cursor-pointer shrink-0"
+                  >
+                    {tokenStatus.checking ? 'Testando...' : 'Salvar e Validar'}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Ideal caso seu domínio do Netlify ainda não esteja autorizado no Firebase. Permite envio direto de PDFs e imagens para o Google Drive.
+                </p>
               </div>
             )}
 
@@ -855,26 +1196,3 @@ export const StorageSettings: React.FC<StorageSettingsProps> = ({
     </div>
   );
 };
-
-function FolderSync(props: any) {
-  return (
-    <svg 
-      {...props} 
-      xmlns="http://www.w3.org/2000/svg" 
-      width="24" 
-      height="24" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round"
-    >
-      <path d="M9 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v2"/>
-      <path d="M12 14v6"/>
-      <path d="M15 17h-6"/>
-      <path d="M19 14l3 3-3 3"/>
-      <path d="M22 17h-6"/>
-    </svg>
-  );
-}

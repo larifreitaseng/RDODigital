@@ -15,7 +15,8 @@ import {
   FolderSync,
   CalendarRange,
   LogIn,
-  LogOut
+  LogOut,
+  Eye
 } from 'lucide-react';
 import { ActiveTab } from './Navbar';
 import { UsuarioEquipe } from '../types';
@@ -32,6 +33,7 @@ interface SidebarProps {
   currentUser?: UsuarioEquipe | null;
   isOpen: boolean;
   onClose: () => void;
+  canEdit?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -45,7 +47,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   usuariosCount,
   currentUser,
   isOpen,
-  onClose
+  onClose,
+  canEdit = true
 }) => {
   const menuItems = [
     {
@@ -154,20 +157,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
 
-          {/* Quick Action Button */}
-          <div>
-            <button
-              id="sidebar-btn-novo-rdo"
-              onClick={() => {
-                onNewRdo();
-                onClose();
-              }}
-              className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-3 rounded-xl text-sm shadow-md transition-all active:scale-98"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Emitir Novo RDO</span>
-            </button>
-          </div>
+          {/* Quick Action Button - only visible if canEdit */}
+          {canEdit && (
+            <div>
+              <button
+                id="sidebar-btn-novo-rdo"
+                onClick={() => {
+                  onNewRdo();
+                  onClose();
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-3 rounded-xl text-sm shadow-md transition-all active:scale-98"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>Emitir Novo RDO</span>
+              </button>
+            </div>
+          )}
 
           {/* Navigation Links Group */}
           <nav className="space-y-1.5" aria-label="Menu Principal">
@@ -276,18 +281,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           ) : (
             <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800 text-center space-y-1.5">
-              <span className="text-[11px] font-semibold text-slate-400 block">
-                Nenhum usuário conectado
+              <span className="text-[11px] font-semibold text-amber-400 flex items-center justify-center gap-1.5">
+                <Eye className="w-3.5 h-3.5" />
+                <span>Modo Visitante (Leitura)</span>
               </span>
+              <p className="text-[10px] text-slate-400 leading-tight">
+                Compartilhado em modo consulta.
+              </p>
               <button
                 onClick={() => {
                   setActiveTab('login');
                   onClose();
                 }}
-                className="w-full text-xs font-bold text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                className="w-full text-xs font-bold text-slate-950 bg-amber-500 hover:bg-amber-400 py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1.5 mt-1 shadow-xs"
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Entrar agora</span>
+                <span>Fazer Login</span>
               </button>
             </div>
           )}
