@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "Obra": {
+      "title": "Obra",
+      "description": "Dados cadastrais e status de uma obra ou empreendimento",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identificador único da obra" },
+        "nome": { "type": "string", "description": "Nome da obra" },
+        "cliente": { "type": "string", "description": "Nome do cliente ou contratante" },
+        "endereco": { "type": "string", "description": "Endereço completo da obra" },
+        "responsavelTecnico": { "type": "string", "description": "Engenheiro ou responsável técnico" },
+        "creaCau": { "type": "string", "description": "Registro profissional CREA/CAU" },
+        "dataInicio": { "type": "string", "description": "Data de início da obra (YYYY-MM-DD)" },
+        "previsaoTermino": { "type": "string", "description": "Previsão de término da obra (YYYY-MM-DD)" },
+        "status": { "type": "string", "enum": ["planejamento", "em_andamento", "pausada", "concluida"], "description": "Status da obra" },
+        "progressoFisico": { "type": "number", "description": "Progresso físico percentual de 0 a 100" },
+        "descricao": { "type": "string", "description": "Descrição detalhada do escopo" }
+      },
+      "required": ["id", "nome", "cliente", "status"]
+    },
+    "RelatorioDiarioObra": {
+      "title": "RelatorioDiarioObra",
+      "description": "Relatório Diário de Obra (RDO) com apontamentos de clima, efetivo, atividades e ocorrências",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identificador do RDO" },
+        "obraId": { "type": "string", "description": "ID da obra vinculada" },
+        "numero": { "type": "number", "description": "Número sequencial do RDO" },
+        "data": { "type": "string", "description": "Data do relatório (YYYY-MM-DD)" },
+        "diaSemana": { "type": "string", "description": "Dia da semana correspondente" },
+        "elaboradoPor": { "type": "string", "description": "Nome do elaborador" },
+        "responsavelTecnico": { "type": "string", "description": "Responsável técnico pela obra" },
+        "clima": { "type": "object", "description": "Condições climáticas manhã, tarde e noite" },
+        "maoDeObra": { "type": "array", "description": "Efetivo de mão de obra presente" },
+        "equipamentos": { "type": "array", "description": "Equipamentos alocados" },
+        "atividades": { "type": "array", "description": "Atividades e serviços executados" },
+        "ocorrencias": { "type": "array", "description": "Ocorrências ou interferências do dia" },
+        "fotos": { "type": "array", "description": "Registro fotográfico com legenda" },
+        "observacoesGerais": { "type": "string", "description": "Observações gerais" },
+        "status": { "type": "string", "enum": ["rascunho", "finalizado", "aprovado"], "description": "Status do RDO" }
+      },
+      "required": ["id", "obraId", "numero", "data"]
+    },
+    "Colaborador": {
+      "title": "Colaborador",
+      "description": "Cadastro de profissional ou colaborador da equipe de obra",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identificador único do colaborador" },
+        "nome": { "type": "string", "description": "Nome do trabalhador" },
+        "funcao": { "type": "string", "description": "Função ou cargo" },
+        "tipo": { "type": "string", "enum": ["proprio", "terceirizado"], "description": "Vínculo empregatício" },
+        "empresa": { "type": "string", "description": "Empresa ou subempreiteira" },
+        "ativo": { "type": "boolean", "description": "Se está ativo no efetivo" }
+      },
+      "required": ["id", "nome", "funcao", "tipo"]
+    },
+    "Equipamento": {
+      "title": "Equipamento",
+      "description": "Cadastro de máquinas e equipamentos da obra",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identificador único do equipamento" },
+        "nome": { "type": "string", "description": "Nome do equipamento" },
+        "categoria": { "type": "string", "description": "Categoria do equipamento" },
+        "proprio": { "type": "boolean", "description": "Se é próprio ou locado" },
+        "quantidade": { "type": "number", "description": "Quantidade cadastrada" },
+        "status": { "type": "string", "enum": ["operando", "parado_manutencao", "ocioso", "desmobilizado"], "description": "Status operacional" }
+      },
+      "required": ["id", "nome", "status"]
+    },
+    "UsuarioEquipe": {
+      "title": "UsuarioEquipe",
+      "description": "Cadastro de usuário com permissão de modificador ou visualizador",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identificador único do usuário" },
+        "nome": { "type": "string", "description": "Nome do usuário" },
+        "email": { "type": "string", "description": "E-mail de acesso" },
+        "cargo": { "type": "string", "description": "Cargo ou função técnica" },
+        "perfil": { "type": "string", "enum": ["modificador", "visualizador"], "description": "Nível de acesso no RDO" },
+        "ativo": { "type": "boolean", "description": "Se o usuário está ativo" },
+        "dataCriacao": { "type": "string", "description": "Data de criação do registro" }
+      },
+      "required": ["id", "nome", "email", "perfil"]
+    }
+  },
+  "firestore": {
+    "/obras/{obraId}": {
+      "schema": "Obra",
+      "description": "Coleção de obras cadastradas"
+    },
+    "/rdos/{rdoId}": {
+      "schema": "RelatorioDiarioObra",
+      "description": "Coleção de relatórios diários de obra"
+    },
+    "/colaboradores/{colaboradorId}": {
+      "schema": "Colaborador",
+      "description": "Coleção de colaboradores e funções"
+    },
+    "/equipamentos/{equipamentoId}": {
+      "schema": "Equipamento",
+      "description": "Coleção de equipamentos e maquinários"
+    },
+    "/usuarios/{usuarioId}": {
+      "schema": "UsuarioEquipe",
+      "description": "Coleção de usuários da equipe e controle de acesso"
+    }
+  }
+}

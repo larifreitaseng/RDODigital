@@ -1,0 +1,8 @@
+{
+  "name": "Diário de Obras - RDO Digital",
+  "description": "Aplicativo para gestão de obras e relatórios diários (RDO) com fotos, clima, mão de obra, equipamentos, ocorrências e geração de PDF para clientes.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
