@@ -77,11 +77,11 @@ export const UsuariosView: React.FC<UsuariosViewProps> = ({
   };
 
   const handleCopyCredentials = (u: UsuarioEquipe) => {
-    const text = `📋 ACESSO AO RDO DIGITAL\nNome: ${u.nome}\nCargo: ${u.cargo}\nPerfil: ${u.perfil === 'editor' ? 'Editor (Pode Modificar)' : 'Visualizador (Somente Leitura)'}\nLogin: ${u.email}\nSenha/PIN: ${u.senha || '123456'}\nObras: ${u.obrasPermitidas.includes('todas') ? 'Todas as Obras' : u.obrasPermitidas.map(id => getObraName(id)).join(', ')}`;
+    const text = `📋 ACESSO AO RDO DIGITAL\nNome: ${u.nome}\nCargo: ${u.cargo}\nPerfil: ${u.perfil === 'editor' ? 'Editor (Pode Modificar)' : 'Visualizador (Somente Leitura)'}\nLogin: ${u.email}\nObras: ${u.obrasPermitidas.includes('todas') ? 'Todas as Obras' : u.obrasPermitidas.map(id => getObraName(id)).join(', ')}`;
     
     navigator.clipboard.writeText(text);
     setCopiedId(u.id);
-    onShowToast(`Dados de login de ${u.nome} copiados com sucesso!`);
+    onShowToast(`Dados de acesso de ${u.nome} copiados com sucesso!`);
     setTimeout(() => setCopiedId(null), 3000);
   };
 
@@ -454,9 +454,9 @@ export const UsuariosView: React.FC<UsuariosViewProps> = ({
 
                     <div className="flex items-center gap-2">
                       <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="text-slate-500">Senha/PIN:</span>
-                      <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded text-[11px]">
-                        {user.senha || '123456'}
+                      <span className="text-slate-500">Senha:</span>
+                      <span className="font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded text-[11px] tracking-widest font-bold">
+                        ••••••••
                       </span>
                     </div>
 
